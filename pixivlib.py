@@ -33,7 +33,7 @@ class PixivAPI:
 
 
 
-    def login(self, username, password):
+    def login(self, username=None, password=None):
         """
         pixiv にログインする。
         Cookie 情報がある場合はそれを利用する。
@@ -44,6 +44,9 @@ class PixivAPI:
             self.access_main()
 
         else:
+            assert isinstance(username, str)
+            assert isinstance(password, str)
+
             self.access_login()
             self.input_username(username)
             self.input_password(password)
