@@ -31,7 +31,7 @@ class PixivAPI:
         "&view_type=page")
 
     # ダウンロード時に使用
-    HEADERS = {"Referer": "https://app-api.pixiv.net/"}
+    HEADERS = {"Referer": "https://www.pixiv.net/"}
     STREAM = True
 
     # オリジナルのイラスト URL のプレフィックス
