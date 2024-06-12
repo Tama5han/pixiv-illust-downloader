@@ -1,23 +1,28 @@
-import img2pdf
+import json
 import os
 import pickle
-import PyPDF2
 import re
 import requests
 
 from bs4 import BeautifulSoup
-from emoji import replace_emoji
 from glob import glob
-from PIL import Image
 from selenium import webdriver
 from time import sleep
 from tqdm import tqdm, trange
 
 
-class PixivAPI:
 
+
+
+class PixivAPI:
+    """
+    pixiv からイラストをダウンロードする用のクラス
+    """
+
+    # メインページ
     MAIN_URL = "https://www.pixiv.net/"
 
+    # ログインページ
     LOGIN_URL = (
         "https://accounts.pixiv.net/login"
         "?return_to=https://www.pixiv.net/"
@@ -25,9 +30,19 @@ class PixivAPI:
         "&source=pc"
         "&view_type=page")
 
+    # ダウンロード時に使用
+    HEADERS = {"Referer": "https://app-api.pixiv.net/"}
+    STREAM = True
+
+    # オリジナルのイラスト URL のプレフィックス
+    ILLUST_PREFIX = "https://i.pximg.net/img-original/img/"
+
 
 
     def __init__(self, chromedriver_path, cookies_path="./pixiv_cookies.pkl"):
+        """
+        ChromeDriver を起動する。
+        """
         self.driver = webdriver.Chrome(chromedriver_path)
         self.cookies_path = cookies_path
 
@@ -36,7 +51,6 @@ class PixivAPI:
     def login(self, username=None, password=None):
         """
         pixiv にログインする。
-        Cookie 情報がある場合はそれを利用する。
         """
         if os.path.exists(self.cookies_path):
             self.access_main()
@@ -54,12 +68,12 @@ class PixivAPI:
 
 
 
-    def close(self):
+    def quit(self):
         """
-        Cookie 情報を保存してドライバを閉じる。
+        Cookie 情報を保存して ChromeDriver を終了する。
         """
         self.save_cookies()
-        self.driver.close()
+        self.driver.quit()
 
 
 
@@ -73,7 +87,7 @@ class PixivAPI:
 
     def access_login(self):
         """
-        ログイン画面を開く。
+        ログインページを開く。
         """
         self.driver.get(self.LOGIN_URL)
         sleep(1)
@@ -98,7 +112,7 @@ class PixivAPI:
 
     def input_username(self, username):
         """
-        ログイン画面が開かれている状態でユーザー名を入力する。
+        ログイン画面でユーザー名を入力する。
         """
         input_text(self.driver, "//input[@autocomplete='username webauthn']", username)
         sleep(0.5)
@@ -106,7 +120,7 @@ class PixivAPI:
 
     def input_password(self, password):
         """
-        ログイン画面が開かれている状態でパスワードを入力する。
+        ログイン画面でパスワードを入力する。
         """
         input_text(self.driver, "//input[@autocomplete='current-password webauthn']", password)
         sleep(0.5)
@@ -114,7 +128,7 @@ class PixivAPI:
 
     def click_login(self):
         """
-        ログイン画面が開かれている状態で【ログイン】をクリックする。
+        ログイン画面で【ログイン】をクリックする。
         """
         click_button(self.driver, "//button[contains(text(), 'ログイン')]")
         sleep(2)
@@ -125,7 +139,7 @@ class PixivAPI:
         作品ページが開かれている状態で【すべて見る】をクリックする。
         """
         try:
-            click_button(self.driver, "//button[contains(text(), 'すべて見る')]")
+            click_button(self.driver, "//div[contains(text(), 'すべて見る')]")
         except:
             pass
         sleep(1)
@@ -181,7 +195,7 @@ class PixivAPI:
         div = body.find("div", class_="sc-1mr081w-0 kZlOCw")
         number_of_artworks = int(div.text)
 
-        # ページ数（1 ページにつき最大 48 作品という事実から逆算）
+        # ページ数（1 ページにつき最大 48 作品から逆算）
         number_of_pages = (number_of_artworks - 1) // 48 + 1
 
 
@@ -226,10 +240,48 @@ class PixivAPI:
 
 
 
-    def get_illust_urls(self, artwork_id, init_access=True):
+    def get_illust_urls(self, artwork_id):
         """
         指定した作品のイラスト URL を取得する。
         """
+
+        artwork_id = str(artwork_id)
+        artwork_url = self.MAIN_URL + "artworks/" + artwork_id
+
+
+        # 作品タイトル・日時・ページ数の取得
+
+        resp = GET_request(artwork_url, headers=self.HEADERS, stream=self.STREAM)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        meta = soup.find(id="meta-preload-data")
+        contents = json.loads(meta.get("content"))
+
+        artwork_data = contents["illust"][artwork_id]["userIllusts"][artwork_id]
+
+        title = artwork_data["title"]
+        number_of_pages = artwork_data["pageCount"]
+
+        thumbnail_url = artwork_data["url"]
+        illust_format = thumbnail_url.split(".")[-1]
+        date_part = extract_datepart(thumbnail_url)
+
+
+        # イラスト URL の作成
+
+        url_prefix = self.ILLUST_PREFIX + date_part + "/" + artwork_id
+        illust_urls = [ url_prefix + f"_p{page}.{illust_format}" for page in range(number_of_pages) ]
+
+
+        return title, illust_urls
+
+
+
+    def get_illust_urls_on_page(self, artwork_id, init_access=True):
+        """
+        開いているページのイラスト URL を取得する。
+        """
+
         if init_access:
             self.access_artworks(artwork_id)
             self.click_view_all()
@@ -304,10 +356,7 @@ class PixivAPI:
         """
         指定したイラストを URL からダウンロードする。
         """
-        headers = {"Referer": "https://app-api.pixiv.net/"}
-        stream = True
-
-        resp = GET_request(illust_url, headers=headers, stream=stream)
+        resp = GET_request(illust_url, headers=self.HEADERS, stream=self.STREAM)
         return resp.content
 
 
@@ -342,131 +391,6 @@ def GET_request(url, n_trials=5, interval=5, **kwargs):
 
 
 
-
-
-class Formatter:
-
-    def __init__(self):
-        self.prohibited = re.compile(r'[\\/:*?"<>|♡]+')
-
-        self.spaces = re.compile(r"[\u3000\t]+")
-
-        self.korean = re.compile(
-            u"[\uac00-\ud7af\u3200-\u321f\u3260-\u327f\u1100-\u11ff"
-            u"\u3130-\u318f\uffa0-\uffdf\ua960-\ua97f\ud7b0-\ud7ff]+")
-
-
-
-    def zip_formatted(self, text):
-        # 韓国語・中国語の削除
-        text = self.korean.sub("?", text)
-        text = text.encode("sjis", "replace").decode("sjis")
-
-        # 半角スペースに変換
-        text = self.spaces.sub(" ", text)
-
-        # 禁則文字の削除
-        text = self.prohibited.sub("_", text)
-        text = replace_emoji(text, replace="")
-
-        return text
-
-
-    def renamed(self, filename, save_dir, file_format="pdf"):
-        """
-        保存先で同じファイル名がある場合は末尾にインデックスを付ける。
-        """
-        if not os.path.exists(save_dir + f"/{filename}.{file_format}"):
-            return filename
-
-        i = 2
-
-        while True:
-            filename_i = filename + f"_{i}"
-
-            if not os.path.exists(save_dir + f"{filename_i}.{file_format}"):
-                return filename_i
-
-            i += 1
-
-
-
-
-
-class PDFMaker:
-
-    def convert_to_jpg(self, illust_dir, verbose=True):
-        """
-        指定されたフォルダ内のイラストを JPEG に変換する。
-        """
-
-        # PNG
-
-        png_files = glob(illust_dir + "/*.png")
-
-        if len(png_files) > 0:
-            if verbose:
-                files = tqdm(png_files, desc="PNG -> JPEG")
-            else:
-                files = png_files
-
-            for png_file in files:
-                png = Image.open(png_file)
-                jpg = png.convert("RGB")
-                jpg.save(re.sub(r"\.png$", ".jpg", png_file))
-
-                os.remove(png_file)
-
-        # WebP
-
-        webp_files = glob(illust_dir + "/*.webp")
-
-        if len(webp_files) > 0:
-            if verbose:
-                files = tqdm(webp_files, desc="WebP -> JPEG")
-            else:
-                files = webp_files
-
-            for webp_file in files:
-                webp = Image.open(webp_file)
-                jpg = webp.convert("RGB")
-                jpg.save(re.sub(r"\.webp$", ".jpg", webp_file))
-
-                os.remove(webp_file)
-
-
-
-    def illusts_to_pdf(self, illust_files, pdf_file):
-        """
-        指定されたイラストを一つの PDF にする。
-        """
-        with open(pdf_file, "wb") as pdf:
-            pdf.write(img2pdf.convert(illust_files))
-
-
-
-    def remove_illusts(self, illust_files, verbose=True):
-        """
-        指定されたイラストを削除する。
-        """
-        if verbose:
-            files = tqdm(illust_files, desc="Removing")
-        else:
-            files = illust_files
-
-        for illust_file in files:
-            os.remove(illust_file)
-
-
-
-    def concat(self, concat_file, *pdf_files):
-        """
-        複数の PDF を結合して一つの PDF にする。
-        """
-        concat_pdf = PyPDF2.PdfMerger()
-
-        for pdf_file in pdf_files:
-            concat_pdf.append(pdf_file)
-
-        concat_pdf.write(concat_file)
-        concat_pdf.close()
+def extract_datepart(thumbnail_url):
+    parts = thumbnail_url.split("/")
+    return "/".join(parts[-7:-1])
