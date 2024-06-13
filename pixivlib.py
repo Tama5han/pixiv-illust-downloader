@@ -15,52 +15,51 @@ from tqdm import tqdm, trange
 
 
 
-class PixivAPI:
-    """
-    pixiv からイラストをダウンロードする用のクラス
-    """
+class PixivIllustDownloader:
 
-    # メインページ
-    MAIN_URL = "https://www.pixiv.net/"
+    # URLs
 
-    # ログインページ（日本）
-    LOGIN_URL = (
-        "https://accounts.pixiv.net/login"
-        "?return_to=https://www.pixiv.net/"
-        "&lang=ja"
-        "&source=pc"
-        "&view_type=page")
+    PIXIV_URL = "https://www.pixiv.net/"
+    LOGIN_URL = "https://accounts.pixiv.net/login"
+    PXIMG_URL = "https://i.pximg.net/img-original/img/"
 
-    # ダウンロード時に使用
+
+    # ダウンロードで使用
+
     HEADERS = {"Referer": "https://www.pixiv.net/"}
     STREAM = True
-
-    # オリジナルのイラスト URL のプレフィックス
-    ILLUST_PREFIX = "https://i.pximg.net/img-original/img/"
 
 
 
     def __init__(self, chromedriver_path, cookies_path="./pixiv_cookies.pkl"):
-        self.driver = webdriver.Chrome(chromedriver_path)
+
+        self.chromedriver_path = chromedriver_path
         self.cookies_path = cookies_path
 
 
 
     def login(self, username=None, password=None):
 
+        self.driver = webdriver.Chrome(self.chromedriver_path)
+
         if os.path.exists(self.cookies_path):
-            self.access_main()
+            self.access_pixiv()
+            sleep(1)
             self.load_cookies()
-            self.access_main()
+            self.access_pixiv()
+            sleep(1)
 
         else:
             assert isinstance(username, str)
             assert isinstance(password, str)
 
             self.access_login()
+            sleep(1)
             self.input_username(username)
             self.input_password(password)
+            sleep(1)
             self.click_login()
+            sleep(2)
 
 
     def quit(self):
@@ -69,57 +68,35 @@ class PixivAPI:
 
 
 
-    def access_main(self):
-        self.driver.get(self.MAIN_URL)
-        sleep(1)
+    def access_pixiv(self):
+        self.driver.get(self.PIXIV_URL)
 
     def access_login(self):
         self.driver.get(self.LOGIN_URL)
-        sleep(1)
 
-    def access_user_page(self, user_id):
-        self.driver.get(self.MAIN_URL + f"users/{user_id}/artworks")
-        sleep(1)
+    def access_userpage(self, user_id):
+        self.driver.get(self.PIXIV_URL + f"users/{user_id}/artworks")
 
     def access_artworks(self, artwork_id):
-        self.driver.get(self.MAIN_URL + f"artworks/{artwork_id}")
-        sleep(1)
+        self.driver.get(self.PIXIV_URL + f"artworks/{artwork_id}")
 
 
+    # 以下の 3 つはログインページを開いている状態で使用
 
     def input_username(self, username):
-        """
-        ログイン画面が開かれている状態でユーザー名を入力する。
-        """
         input_text(self.driver, "//input[@autocomplete='username webauthn']", username)
-        sleep(0.5)
-
 
     def input_password(self, password):
-        """
-        ログイン画面が開かれている状態でパスワードを入力する。
-        """
         input_text(self.driver, "//input[@autocomplete='current-password webauthn']", password)
-        sleep(0.5)
-
 
     def click_login(self):
-        """
-        ログイン画面が開かれている状態で【ログイン】をクリックする。
-        """
         click_button(self.driver, "//button[contains(text(), 'ログイン')]")
-        sleep(2)
 
+
+    # 作品ページを開いている状態で使用
 
     def click_view_all(self):
-        """
-        作品ページが開かれている状態で【すべて見る】をクリックする。
-        """
-        try:
-            click_button(self.driver, "//div[contains(text(), 'すべて見る')]")
-        except:
-            pass
-        sleep(1)
+        click_button(self.driver, "//div[contains(text(), 'すべて見る')]")
 
 
 
@@ -127,25 +104,27 @@ class PixivAPI:
         cookies = pickle.load(open(self.cookies_path, "rb"))
         [ self.driver.add_cookie(cookie) for cookie in cookies ]
 
-
     def save_cookies(self):
         cookies = self.driver.get_cookies()
         pickle.dump(cookies, open(self.cookies_path, "wb"))
 
 
+    # ユーザーページ（URL: https://www.pixiv.net/users/*/artworks）を開いている状態で使用
 
     def get_user(self):
-        """
-        開かれているユーザーページのユーザー名と ID を取得する。
-        """
+
         soup = get_soup(self.driver)
         body = soup.find("body")
 
+
         # ユーザー名
+
         h1 = body.find("h1")
         user_name = h1.text.strip() if h1 is not None else "Noname"
 
+
         # ユーザー ID
+
         current_url = self.driver.current_url
         user_id = int(re.search(r"[0-9]+", current_url).group())
 
@@ -153,11 +132,18 @@ class PixivAPI:
 
 
 
-    def get_all_artworks(self, user_id, verbose=True, init_access=True):
+    def get_all_artworks(self, user_id=None, init_access=True, verbose=True):
         """
-        指定したユーザーの全作品 ID を取得する。
+        指定したユーザーの全作品 ID とそれらのタイトルを取得する。
         """
-        if init_access: self.access_user_page(user_id)
+
+        if init_access:
+
+            assert user_id is not None
+
+            self.access_userpage(user_id)
+            sleep(1)
+
 
         soup = get_soup(self.driver)
         body = soup.find("body")
@@ -169,22 +155,25 @@ class PixivAPI:
         number_of_artworks = int(div.text)
 
 
-        # ページ数（1 ページにつき最大 48 作品から逆算）
+        # ページ数（1 ページにつき最大 48 作品）
 
         number_of_pages = (number_of_artworks - 1) // 48 + 1
 
+
+        # ページごとに作品を抽出して統合
 
         if verbose:
             pages = trange(1, number_of_pages + 1)
         else:
             pages = range(1, number_of_pages + 1)
 
+
         all_artworks = dict()
-        user_page = self.MAIN_URL + f"users/{user_id}/artworks"
+        userpage_url = self.PIXIV_URL + f"users/{user_id}/artworks"
 
         for page in pages:
-            self.driver.get(user_page + f"?p={page}")
-            sleep(2)
+            self.driver.get(userpage_url + f"?p={page}")
+            sleep(1)
 
             all_artworks |= self.get_artworks_on_page()
 
@@ -193,22 +182,28 @@ class PixivAPI:
 
     def get_artworks_on_page(self):
         """
-        開かれているページの全作品 ID を取得する。
+        開かれているページの全作品 ID とそれらのタイトルを取得する。
         """
+
         soup = get_soup(self.driver)
         body = soup.find("body")
 
         artwork_ids = []
         titles = []
-        pattern = re.compile(r"^/artworks/[0-9]+$")
 
-        for a in body.find_all("a", href=pattern):
+        href_pattern = re.compile(r"^/artworks/[0-9]+$")
+        id_pattern = re.compile(r"[0-9]+$")
+
+        for a in body.find_all("a", href=href_pattern):
+
             children = a.find_all()
 
             if len(children) > 0: continue
 
             href = a.get("href")
-            artwork_ids.append(int(re.search(r"[0-9]+$", href).group()))
+            artwork_id = int(id_pattern.search(href).group())
+
+            artwork_ids.append(artwork_id)
             titles.append(a.text.strip())
 
         return dict(zip(artwork_ids, titles))
@@ -217,21 +212,22 @@ class PixivAPI:
 
     def get_illust_urls(self, artwork_id):
         """
-        指定した作品のイラスト URL を取得する。
+        指定した作品に含まれる全イラスト URL を取得する。
         """
+
         artwork_id = str(artwork_id)
-        artwork_url = self.MAIN_URL + "artworks/" + artwork_id
+        artwork_url = self.PIXIV_URL + "artworks/" + artwork_id
 
-
-        # 作品タイトル・オリジナル URL・ページ数の取得
-
-        resp = requests.get(artwork_url, headers=self.HEADERS, stream=self.STREAM)
-        soup = BeautifulSoup(resp.text, "html.parser")
+        response = self._requests_get(artwork_url)
+        soup = BeautifulSoup(response.text, "html.parser")
 
         meta = soup.find(id="meta-preload-data")
         contents = json.loads(meta.get("content"))
 
         illust_data = contents["illust"][artwork_id]["userIllusts"][artwork_id]
+
+
+        # 作品タイトル・イラストの枚数・更新日時の取得
 
         title = illust_data["title"]
         number_of_pages = illust_data["pageCount"]
@@ -242,8 +238,33 @@ class PixivAPI:
 
         # イラスト URL の作成
 
-        url_prefix = self.ILLUST_PREFIX + f"{update_date}/{artwork_id}"
+        url_prefix = self.PXIMG_URL + f"{update_date}/{artwork_id}"
         illust_urls = [ url_prefix + f"_p{i}.jpg" for i in range(number_of_pages) ]
+
+
+        return title, illust_urls
+
+
+
+    def get_illust_urls_on_page(self):
+        """
+        開かれている作品に含まれる全イラスト URL を取得する。
+        """
+
+        soup = get_soup(self.driver)
+        body = soup.find("body")
+
+
+        # 作品タイトル
+
+        h1 = body.find("h1")
+        title = h1.text.strip() if h1 is not None else "Notitle"
+
+
+        # イラスト URL
+
+        format_pattern = re.compile(r"(jpg|jpeg|png)$")
+        illust_urls = [ a.get("href") for a in body.find_all("a", href=format_pattern) ]
 
 
         return title, illust_urls
@@ -254,20 +275,27 @@ class PixivAPI:
         """
         開かれている Booth の参考用イラスト URL を取得する。
         """
+
         soup = get_soup(self.driver)
         body = soup.find("body")
 
+
         # 作品タイトル
+
         h2 = body.find("h2")
         title = h2.text.strip() if h2 is not None else "No_title"
 
+
         # 参考用イラスト URL
-        illust_urls = []
+
         div_pattern = re.compile(r"slick\-slide")
         img_attrs = {"data-origin": re.compile(".")}
         valid_attrs = {"slick-slide", "slick-current", "slick-active"}
 
+        illust_urls = []
+
         for div in body.find_all("div", class_=div_pattern):
+
             class_attrs = set(div.get("class"))
             if not (class_attrs <= valid_attrs): continue
 
@@ -276,18 +304,20 @@ class PixivAPI:
 
             illust_urls.append(img.get("data-origin"))
 
+
         return title, illust_urls
 
 
 
     def download_illusts(self, illust_urls, save_dir=".", verbose=True):
         """
-        指定したイラストをダウンロードして保存する。
+        指定した URL のイラストをダウンロードして保存する。
         """
 
-        # すべて JPEG に変換
+        # 一旦、JPEG に変換
 
-        illust_urls = [ re.sub(r"\.[^\.]+$", ".jpg", url) for url in illust_urls ]
+        extension = re.compile(r"\.[^\.]+$")
+        illust_urls = [ extension.sub(".jpg", url) for url in illust_urls ]
 
 
         if verbose:
@@ -299,40 +329,56 @@ class PixivAPI:
         for illust_url in urls:
 
             illust, illust_format = self.download_illust(illust_url)
+            sleep(0.7)
 
             number_of_illusts = len(glob(save_dir + "/*"))
-            save_file = save_dir + f"/illust_{number_of_illusts:0>3}.{illust_format}"
 
-            sleep(1)
+            save_file = save_dir + f"/illust_{number_of_illusts:0>3}.{illust_format}"
 
             with open(save_file, "wb") as f:
                 f.write(illust)
 
 
     def download_illust(self, illust_url):
+        """
+        指定した URL のイラストをダウンロードする。
+        """
 
-        # JPEG
+        # .jpg
 
-        resp = requests.get(illust_url, headers=self.HEADERS, stream=self.STREAM)
-
-        if resp.status_code == 200:
-            return resp.content, "jpg"
-
-
-        # PNG
-
-        illust_url = re.sub(r"\.jpg$", ".png", illust_url)
+        response = self._requests_get(illust_url)
         sleep(0.3)
 
-        resp = requests.get(illust_url, headers=self.HEADERS, stream=self.STREAM)
-
-        if resp.status_code == 200:
-            return resp.content, "png"
+        if response.status_code == 200:
+            return response.content, "jpg"
 
 
-        # 失敗した場合、エラー
+        # .png
 
-        resp.raise_for_status()
+        response = self._requests_get(illust_url[:-3] + "png")
+        sleep(0.3)
+
+        if response.status_code == 200:
+            return response.content, "png"
+
+
+        # .jpeg
+
+        response = self._requests_get(illust_url[:-3] + "jpeg")
+        sleep(0.3)
+
+        if response.status_code == 200:
+            return response.content, "jpg"
+
+
+        # 上記以外はエラー
+
+        response.raise_for_status()
+
+
+
+    def _requests_get(self, url):
+        return requests.get(url, headers=self.HEADERS, stream=self.STREAM)
 
 
 
