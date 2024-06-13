@@ -1,6 +1,6 @@
 # PixivIllustDownloader
 
-[pixiv](https://www.pixiv.net/) からイラストをダウンロードする用のクラスです。現時点では JPG と PNG のみに対応しています。
+[pixiv](https://www.pixiv.net/) からイラストをダウンロードする用のクラスです。コピペして使用してください。現時点では JPG と PNG のみに対応しています。
 
 自分用に作成したものであるため、基本的かつ単純なメソッドしか用意していません。より高度な機能が欲しい場合は使用者自身が機能を実装するか、他のライブラリ（[pixivpy](https://github.com/upbit/pixivpy) 等）をご使用ください。
 
