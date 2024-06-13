@@ -177,7 +177,7 @@ password = "<password>"
 user_id = 0123456
 
 
-px = PixivIllustDownloader("/path/to/chromedriver.exe")
+px = PixivIllustDownloader(chromedriver_path)
 px.login(username, password)
 
 
