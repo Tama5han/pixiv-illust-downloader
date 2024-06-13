@@ -288,21 +288,19 @@ class PixivIllustDownloader:
 
         # 参考用イラスト URL
 
-        div_pattern = re.compile(r"slick\-slide")
-        img_attrs = {"data-origin": re.compile(".")}
-        valid_attrs = {"slick-slide", "slick-current", "slick-active"}
+        div_attrs = {"data-slick-index": re.compile(r"[0-9]+")}
+        img_attrs = {"data-origin": re.compile(r".")}
 
         illust_urls = []
 
-        for div in body.find_all("div", class_=div_pattern):
+        for div in body.find_all("div", attrs=div_attrs):
 
-            class_attrs = set(div.get("class"))
-            if not (class_attrs <= valid_attrs): continue
+            if "slick-cloned" in div.get("class"): continue
 
             img = div.find("img", attrs=img_attrs)
-            if img is None: continue
 
-            illust_urls.append(img.get("data-origin"))
+            if img is not None:
+                illust_urls.append(img.get("data-origin"))
 
 
         return title, illust_urls
