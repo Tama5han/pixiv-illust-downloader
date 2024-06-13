@@ -206,7 +206,7 @@ for artwork_id in tqdm(artworks_ids):
 
 # イラストのダウンロード
 
-for title, illust_urls in tqdm(zip(title_list, urls_list), total=len(artwork_id)):
+for title, illust_urls in tqdm(zip(title_list, urls_list), total=len(artworks_ids)):
 
     # ディレクトリの作成
     save_dir = "./" + title
