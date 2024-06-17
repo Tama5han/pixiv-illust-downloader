@@ -100,12 +100,13 @@ print("id:", user_id)
 
 
 
-### get\_all\_artworks(user\_id=None, init\_access=True, verbose=True)
+### get\_all\_artworks(user\_id=None, init\_access=True, page\_select=None, verbose=True)
 
 指定したユーザーの全作品 ID とそれらのタイトルを取得します。返り値は作品 ID をキー、タイトルを値とする dict オブジェクトです。
 
 - **user\_id** : ユーザー ID
 - **init\_access** : 最初にユーザーのページへ移動するかどうか
+- **page\_select** : 対象のページ番号
 - **verbose** : プログレスバーを表示するかどうか
 
 ```python
@@ -115,11 +116,11 @@ artworks = px.get_all_artworks(user_id=0123456)
 print(artworks)
 # {098765: 'Title_1', 043210: 'Title2', ...}
 
+# 1, 3, 5 ページだけを指定する場合
+artworks = px.get_all_artworks(user_id=0123456, page_select=[1, 3, 5])
+
 # 既にユーザーページを開いている場合
 artworks = px.get_all_artworks()
-
-print(artworks)
-# {098765: 'Title_1', 043210: 'Title2', ...}
 ```
 
 
