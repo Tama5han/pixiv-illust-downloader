@@ -99,6 +99,7 @@ class PixivIllustDownloader:
         click_button(self.driver, "//div[contains(text(), 'すべて見る')]")
 
 
+    # Cookie の保存・読み込み用
 
     def load_cookies(self):
         cookies = pickle.load(open(self.cookies_path, "rb"))
@@ -132,7 +133,7 @@ class PixivIllustDownloader:
 
 
 
-    def get_all_artworks(self, user_id=None, init_access=True, verbose=True):
+    def get_all_artworks(self, user_id=None, init_access=True, page_select=None, verbose=True):
         """
         指定したユーザーの全作品 ID とそれらのタイトルを取得する。
         """
@@ -159,13 +160,18 @@ class PixivIllustDownloader:
 
         number_of_pages = (number_of_artworks - 1) // 48 + 1
 
+        if page_select is None:
+            selected_pages = list(range(1, number_of_pages + 1))
+        else:
+            selected_pages = [ page for page in range(1, number_of_pages + 1) if page in page_select ]
+
 
         # ページごとに作品を抽出して統合
 
         if verbose:
-            pages = trange(1, number_of_pages + 1)
+            pages = tqdm(selected_pages)
         else:
-            pages = range(1, number_of_pages + 1)
+            pages = selected_pages
 
 
         all_artworks = dict()
@@ -234,6 +240,12 @@ class PixivIllustDownloader:
 
         update_date = datetime.fromisoformat(illust_data["updateDate"])
         update_date = update_date.strftime("%Y/%m/%d/%H/%M/%S")
+
+
+        # うごイラ（illustType: 2）を除外
+
+        if illust_data["illustType"] == 2:
+            return title, []
 
 
         # イラスト URL の作成
